@@ -1,0 +1,70 @@
+- name: Install FreeIPA server on Rocky
+  hosts: rocky
+  become: true
+  vars:
+    ipa_ds_password: "Directory_Manager_P@ss" # change
+    ipa_admin_password: "Admin_P@ss" # change
+
+  pre_tasks:
+    - name: Derive FQDN from ansible_host
+      set_fact:
+        ipa_fqdn: "{{ ansible_host | replace('.', '-') }}.ip.linodeusercontent.com"
+        ipa_domain: "ip.linodeusercontent.com"
+        ipa_realm: "IP.LINODEUSERCONTENT.COM"
+
+    - debug:
+        msg: "Using FQDN {{ ipa_fqdn }}"
+
+  tasks:
+    - name: Set system hostname to rDNS FQDN
+      command: "hostnamectl set-hostname {{ ipa_fqdn }}"
+      args: { creates: "/etc/hostname" }
+
+    - name: Ensure base packages
+      dnf:
+        name:
+          - freeipa-server
+          - freeipa-healthcheck
+          - freeipa-client
+          - firewalld
+        state: present
+
+    - name: Enable & start firewalld
+      service:
+        name: firewalld
+        state: started
+        enabled: true
+
+    - name: Open FreeIPA (no-DNS) services
+      firewalld:
+        service: "{{ item }}"
+        permanent: true
+        immediate: true
+        state: enabled
+      loop:
+        - freeipa-ldap
+        - freeipa-ldaps
+        - http
+        - https
+        - kerberos
+        - ntp
+        - dns
+
+    - name: Run ipa-server-install (no DNS)
+      no_log: true
+      command: >
+        ipa-server-install -U
+        --realm {{ ipa_realm }}
+        --domain {{ ipa_domain }}
+        --hostname {{ ipa_fqdn }}
+        --ds-password {{ ipa_ds_password }}
+        --admin-password {{ ipa_admin_password }}
+      args:
+        creates: /etc/ipa/default.conf
+
+    - name: Show IPA config path (sanity)
+      stat:
+        path: /etc/ipa/default.conf
+      register: ipa_cfg
+    - debug:
+        msg: "IPA installed: {{ ipa_cfg.stat.exists }} (config at /etc/ipa/default.conf)"
