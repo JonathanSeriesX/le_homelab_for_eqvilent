@@ -1,8 +1,8 @@
+# --- Play A: HBAC on the IPA server -----------------------------------------
 - name: Configure HBAC on IPA server
   hosts: rocky
   become: true
   vars:
-    app_host: "app"
     app_fqdn: "app.lab.evgenii.org"
     ipa_admin_password: "Admin_P@ss"
 
@@ -31,27 +31,36 @@
         ipa hbacrule-add-user allow-ssh-to-app --users=user3 || true
       changed_when: false
 
-    - name: Set ACLs for users
-      ansible.posix.acl:
-        path: /app
-        entity: "{{ item.user }}"
-        etype: user
-        permissions: "{{ item.perms }}"
-        state: present
-      loop:
-        - { user: "user1", perms: "rx" }
-        - { user: "user2", perms: "rwx" }
-        - { user: "user3", perms: "rwx" }
+# --- Play B: Filesystem permissions on the app host --------------------------
+- name: Set permissions on Docker working directory
+  hosts: app
+  become: true
+  vars:
+    docker_workdir: "/app"
+    acl_entries:
+      - { user: "user1", perms: "rx" } # read-only
+      - { user: "user2", perms: "wx" } # write-only??
+      - { user: "user3", perms: "rwx" } # read+write
 
-    - name: Set default ACLs
-      ansible.posix.acl:
-        path: /app
-        entity: "{{ item.user }}"
-        etype: user
-        permissions: "{{ item.perms }}"
-        default: yes
+  tasks:
+    - name: Ensure ACL tooling present
+      package:
+        name: acl
         state: present
-      loop:
-        - { user: "user1", perms: "rx" }
-        - { user: "user2", perms: "rwx" }
-        - { user: "user3", perms: "rwx" }
+
+    - name: Ensure Docker work dir exists
+      file:
+        path: "{{ docker_workdir }}"
+        state: directory
+        mode: "0775"
+
+    # Apply both access and default ACLs (inheritance) in one go
+    - name: Apply access and default ACLs
+      ansible.posix.acl:
+        path: "{{ docker_workdir }}"
+        entity: "{{ item.0.user }}"
+        etype: user
+        permissions: "{{ item.0.perms }}"
+        default: "{{ item.1 }}"
+        state: present
+      loop: "{{ query('nested', acl_entries, [false, true]) }}"
