@@ -10,7 +10,6 @@
       failed_when: mp.rc != 0
 
   vars:
-    # geerlingguy.docker variables
     docker_daemon_options:
       data-root: "/app"
     docker_add_repo: true

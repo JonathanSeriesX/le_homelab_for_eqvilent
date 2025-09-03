@@ -4,25 +4,23 @@
   hosts: app
   become: true
   vars:
-    ipa_domain: "eqvilent.local"
-    ipa_realm: "EQVILENT.LOCAL"
-    ipa_admin_password: "Admin_P@ss" # same as in freeipa.yml
-
-    # derive IPA server FQDN from its inventory IP (Linode rDNS form)
+    ipa_base_domain: "evgenii.org"
+    ipa_subdomain: "lab"
+    ipa_domain: "{{ ipa_subdomain }}.{{ ipa_base_domain }}"
+    ipa_realm: "{{ (ipa_subdomain + '.' + ipa_base_domain) | upper }}"
     ipa_host: "rocky"
-    ipa_fqdn: "{{ hostvars[ipa_host].ansible_host | replace('.', '-') }}.ip.linodeusercontent.com"
-    app_ip: "{{ hostvars[inventory_hostname].ansible_host }}"
-    app_fqdn: "{{ app_ip | replace('.', '-') }}.ip.linodeusercontent.com"
+    ipa_fqdn: "ipa.{{ ipa_subdomain }}.{{ ipa_base_domain }}"
+    app_fqdn: "app.{{ ipa_subdomain }}.{{ ipa_base_domain }}"
 
   pre_tasks:
-    - name: Set app hostname to Linode rDNS FQDN
+    - name: Set app hostname to desired FQDN
       command: hostnamectl set-hostname {{ app_fqdn }}
 
     - name: Ensure /etc/hosts has app FQDN mapped to its IP
       lineinfile:
         path: /etc/hosts
-        regexp: '^{{ app_ip | regex_escape() }}\s+'
-        line: "{{ app_ip }} {{ app_fqdn }} app"
+        regexp: '^{{ hostvars[inventory_hostname].ansible_host | regex_escape() }}\s+'
+        line: "{{ hostvars[inventory_hostname].ansible_host }} {{ app_fqdn }} app"
         state: present
         create: yes
         backrefs: yes
@@ -73,63 +71,3 @@
         --ca-cert-file=/etc/ipa/ca.crt
       args:
         creates: /etc/ipa/default.conf
-
-# Play 2: on IPA server, allow SSH from users to the APP host
-- name: Configure HBAC on IPA server
-  hosts: rocky
-  become: true
-  vars:
-    # app FQDN derived from app host IP (Linode rDNS form)
-    app_host: "app"
-    app_fqdn: "{{ hostvars[app_host].ansible_host | replace('.', '-') }}.ip.linodeusercontent.com"
-    ipa_admin_password: "Admin_P@ss"
-
-  tasks:
-    - name: kinit admin (non-interactive)
-      no_log: true
-      shell: echo "{{ ipa_admin_password }}" | kinit admin
-      changed_when: false
-
-    - name: Ensure HBAC rule exists
-      shell: ipa hbacrule-add allow-ssh-to-app --desc="Allow SSH to app host" || true
-      changed_when: false
-
-    - name: Bind HBAC rule to app host + sshd service
-      shell: |
-        ipa hbacrule-mod allow-ssh-to-app --hostcat=none || true
-        ipa hbacrule-add-host allow-ssh-to-app --hosts='{{ app_fqdn }}' || true
-        ipa hbacrule-mod allow-ssh-to-app --servicecat=none || true
-        ipa hbacrule-add-service allow-ssh-to-app --hbacsvcs=sshd || true
-      changed_when: false
-
-    - name: Add users to HBAC rule
-      shell: |
-        ipa hbacrule-add-user allow-ssh-to-app --users=user1 || true
-        ipa hbacrule-add-user allow-ssh-to-app --users=user2 || true
-        ipa hbacrule-add-user allow-ssh-to-app --users=user3 || true
-      changed_when: false
-
-    - name: Set ACLs for users
-      ansible.posix.acl:
-        path: /app
-        entity: "{{ item.user }}"
-        etype: user
-        permissions: "{{ item.perms }}"
-        state: present
-      loop:
-        - { user: "user1", perms: "rx" }
-        - { user: "user2", perms: "rwx" }
-        - { user: "user3", perms: "rwx" }
-
-    - name: Set default ACLs
-      ansible.posix.acl:
-        path: /app
-        entity: "{{ item.user }}"
-        etype: user
-        permissions: "{{ item.perms }}"
-        default: yes
-        state: present
-      loop:
-        - { user: "user1", perms: "rx" }
-        - { user: "user2", perms: "rwx" }
-        - { user: "user3", perms: "rwx" }

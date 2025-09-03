@@ -9,6 +9,8 @@
     user3_pass: "User3Pass!" # change
     ipa_base_domain: "evgenii.org" # parent domain managed at Cloudflare
     ipa_subdomain: "lab" # delegated to FreeIPA (NS lab -> ipa.lab.evgenii.org)
+    letsencrypt_email: "admin@evgenii.org" # change to valid email for LE
+    app_host: "app" # inventory hostname of the application server
 
   pre_tasks:
     - name: Compose IPA DNS settings from vars
@@ -36,6 +38,11 @@
         line: "{{ ansible_default_ipv4.address | default(ansible_host) }} {{ ipa_fqdn }} {{ ipa_fqdn.split('.')[0] }}"
         state: present
         create: yes
+
+    - name: Ensure epel-release is installed before certbot
+      dnf:
+        name: epel-release
+        state: present
 
     - name: Ensure base packages
       dnf:
@@ -88,6 +95,16 @@
       shell: echo "{{ ipa_admin_password }}" | kinit admin
       changed_when: false
 
+    - name: Check if DNS A record for app exists in IPA
+      command: ipa dnsrecord-show {{ ipa_domain }} app
+      register: ipa_app_dns
+      failed_when: false
+      changed_when: false
+
+    - name: Create DNS A record for app.lab with inventory IP
+      command: ipa dnsrecord-add {{ ipa_domain }} app --a-rec {{ hostvars[app_host].ansible_host }}
+      when: ipa_app_dns.rc != 0
+
     - name: Check presence of users
       command: ipa user-show {{ item.name }}
       register: ipa_user_check
@@ -132,7 +149,7 @@
       command: >
         certbot certonly --standalone
         -d ipa.lab.evgenii.org
-        --agree-tos -m you@example.com
+        --agree-tos -m {{ letsencrypt_email }}
         --non-interactive --keep-until-expiring
         --pre-hook "systemctl stop httpd"
         --post-hook "systemctl start httpd"
