@@ -14,7 +14,7 @@ I chose idempotent automation with [Terraform](https://developer.hashicorp.com/t
 
 The [main.sh](main.sh) script contains all the steps required to accomplish the given task.
 
-<img src="https://github.com/JonathanSeriesX/dayoneXtwitter/blob/main/pics/chmod.jpg?raw=true" alt="chmod situation" width="400"/>
+<img src="https://github.com/JonathanSeriesX/dayoneXtwitter/blob/main/pics/chmod.jpg?raw=true" alt="chmod situation" width="600"/>
 
 Terraform expects the variables `ssh_pub_key`, `root_pass`, and `token` for Linode.
 
