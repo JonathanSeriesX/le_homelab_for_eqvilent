@@ -2,9 +2,10 @@
 - name: Configure HBAC on IPA server
   hosts: rocky
   become: true
+  vars_files:
+    - vars.yml
   vars:
     app_fqdn: "app.lab.evgenii.org"
-    ipa_admin_password: "Admin_P@ss"
 
   tasks:
     - name: kinit admin (non-interactive)

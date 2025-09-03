@@ -1,12 +1,13 @@
 - name: Enroll app host into IPA
   hosts: app
   become: true
+  vars_files:
+    - vars.yml
   vars:
     ipa_domain: "lab.evgenii.org"
     ipa_realm: "LAB.EVGENII.ORG"
     ipa_fqdn: "ipa.lab.evgenii.org"
     app_fqdn: "app.lab.evgenii.org"
-    ipa_admin_password: "Admin_P@ss"
 
   pre_tasks:
     - name: Set app hostname
