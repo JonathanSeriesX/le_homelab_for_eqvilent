@@ -34,26 +34,30 @@
       ansible.builtin.file:
         path: /etc/ipa
         state: directory
-        mode: '0755'
+        mode: "0755"
 
-    - name: Copy IPA CA from server
-      fetch:
-        src: /etc/ipa/ca.crt
-        dest: /tmp/ca.crt
-        flat: yes
-      delegate_to: rocky
+    - name: Remove stale /etc/ipa/ca.crt if present
+      file:
+        path: /etc/ipa/ca.crt
+        state: absent
 
-    - name: Ensure /etc/ipa/ca.crt present
-      copy:
-        src: /tmp/ca.crt
+    - name: Download IPA CA directly from server (HTTP)
+      get_url:
+        url: "http://{{ ipa_fqdn }}/ipa/config/ca.crt"
         dest: /etc/ipa/ca.crt
         mode: "0644"
+        timeout: 30
 
-    - name: Verify certificate was copied
-      stat:
-        path: /etc/ipa/ca.crt
-      register: cert_stat
-      failed_when: not cert_stat.stat.exists
+    - name: Validate CA with openssl
+      command: openssl x509 -in /etc/ipa/ca.crt -noout -text
+      register: ca_details
+      changed_when: false
+
+    - name: Debug CA subject and issuer
+      debug:
+        msg: |
+          Subject: {{ (ca_details.stdout | regex_search('Subject:.*')) | default('n/a') }}
+          Issuer:  {{ (ca_details.stdout | regex_search('Issuer:.*'))  | default('n/a') }}
 
   tasks:
     - name: Enroll with ipa-client-install
@@ -65,6 +69,6 @@
         --principal=admin
         --password={{ ipa_admin_password }}
         --mkhomedir
-        --ca-cert-file=/etc/ipa/ca.crt
+        --no-ntp
       args:
         creates: /etc/ipa/default.conf
