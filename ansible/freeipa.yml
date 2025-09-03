@@ -7,16 +7,18 @@
     user1_pass: "User1Pass!" # change
     user2_pass: "User2Pass!" # change
     user3_pass: "User3Pass!" # change
+    ipa_base_domain: "evgenii.org" # parent domain managed at Cloudflare
+    ipa_subdomain: "lab" # delegated to FreeIPA (NS lab -> ipa.lab.evgenii.org)
 
   pre_tasks:
-    - name: Derive FQDN from ansible_host
+    - name: Compose IPA DNS settings from vars
       set_fact:
-        ipa_fqdn: "{{ ansible_host | replace('.', '-') }}.ip.linodeusercontent.com"
-        ipa_domain: "eqvilent.local"
-        ipa_realm: "EQVILENT.LOCAL"
+        ipa_domain: "{{ ipa_subdomain }}.{{ ipa_base_domain }}"
+        ipa_realm: "{{ (ipa_subdomain + '.' + ipa_base_domain) | upper }}"
+        ipa_fqdn: "ipa.{{ ipa_subdomain }}.{{ ipa_base_domain }}"
 
     - debug:
-        msg: "Using FQDN {{ ipa_fqdn }}"
+        msg: "Using FQDN {{ ipa_fqdn }} (domain {{ ipa_domain }}, realm {{ ipa_realm }})"
 
     - name: Check if IPA already installed
       stat:
@@ -24,16 +26,25 @@
       register: ipa_conf
 
   tasks:
-    - name: Set system hostname to rDNS FQDN
-      command: "hostnamectl set-hostname {{ ipa_fqdn }}"
-      args: { creates: "/etc/hostname" }
+    - name: Set hostname only if needed
+      ansible.builtin.hostname:
+        name: "{{ ipa_fqdn }}"
+
+    - name: Ensure /etc/hosts has self mapping for FQDN (bootstrap)
+      lineinfile:
+        path: /etc/hosts
+        line: "{{ ansible_default_ipv4.address | default(ansible_host) }} {{ ipa_fqdn }} {{ ipa_fqdn.split('.')[0] }}"
+        state: present
+        create: yes
 
     - name: Ensure base packages
       dnf:
         name:
           - freeipa-server
+          - freeipa-server-dns
           - freeipa-healthcheck
           - firewalld
+          - certbot
         state: present
 
     - name: Enable & start firewalld
@@ -42,13 +53,14 @@
         state: started
         enabled: true
 
-    - name: Open FreeIPA (no-DNS) services
+    - name: Open FreeIPA services (with DNS)
       firewalld:
         service: "{{ item }}"
         permanent: true
         immediate: true
         state: enabled
       loop:
+        - dns
         - freeipa-ldap
         - freeipa-ldaps
         - http
@@ -56,15 +68,17 @@
         - kerberos
         - ntp
 
-    - name: Run ipa-server-install (no DNS)
+    - name: Run ipa-server-install with integrated DNS
       no_log: true
       command: >
         ipa-server-install -U
+        --setup-dns
         --realm {{ ipa_realm }}
         --domain {{ ipa_domain }}
         --hostname {{ ipa_fqdn }}
         --ds-password {{ ipa_ds_password }}
         --admin-password {{ ipa_admin_password }}
+        --forwarder 1.1.1.1 --forwarder 8.8.8.8
       args:
         creates: /etc/ipa/default.conf
       when: not ipa_conf.stat.exists
@@ -112,3 +126,29 @@
       register: ipa_cfg
     - debug:
         msg: "IPA installed: {{ ipa_cfg.stat.exists }} (config at /etc/ipa/default.conf)"
+
+    # 2) Get/renew cert (standalone; auto-stops httpd while validating)
+    - name: Obtain/renew LE cert for ipa.lab.evgenii.org
+      command: >
+        certbot certonly --standalone
+        -d ipa.lab.evgenii.org
+        --agree-tos -m you@example.com
+        --non-interactive --keep-until-expiring
+        --pre-hook "systemctl stop httpd"
+        --post-hook "systemctl start httpd"
+      args:
+        creates: /etc/letsencrypt/live/ipa.lab.evgenii.org/fullchain.pem
+
+    # 3) Install into FreeIPA + set a deploy hook for future renewals
+    - name: Install cert and set renew hook
+      copy:
+        dest: /etc/letsencrypt/renewal-hooks/deploy/99-freeipa-http.sh
+        mode: "0755"
+        content: |
+          #!/bin/bash
+          if [[ "$RENEWED_LINEAGE" == "/etc/letsencrypt/live/ipa.lab.evgenii.org" ]]; then
+            ipa-server-certinstall -U -w \
+              --http-cert-file "$RENEWED_LINEAGE/fullchain.pem" \
+              --http-key-file  "$RENEWED_LINEAGE/privkey.pem"
+            systemctl restart httpd
+          fi

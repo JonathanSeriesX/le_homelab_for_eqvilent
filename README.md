@@ -6,3 +6,7 @@ Current status:
 - FreeIPA installation is automated with Ansible
 - Docker installation is automated with Ansible
 - FreeIPA client setup still needs to be completed
+
+What's next?
+
+- Automate creating DNS records with Cloudflare API

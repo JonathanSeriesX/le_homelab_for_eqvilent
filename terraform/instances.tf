@@ -19,14 +19,3 @@ resource "linode_instance" "apa" {
   private_ip      = true
   tags            = ["ipa-app"]
 }
-
-resource "linode_volume" "app_data" {
-  label     = "app-data"
-  region    = var.region
-  size      = var.app_volume_size_gb
-  linode_id = linode_instance.apa.id
-}
-
-output "app_volume_id_path" {
-  value = "scsi-0Linode_Volume_${linode_volume.app_data.label}"
-}
