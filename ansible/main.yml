@@ -1,0 +1,5 @@
+---
+- import_playbook: freeipa.yml
+- import_playbook: lvm.yml
+- import_playbook: docker.yml
+- import_playbook: integrate.yml

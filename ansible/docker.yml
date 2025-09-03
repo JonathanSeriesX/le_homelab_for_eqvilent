@@ -1,0 +1,28 @@
+---
+- hosts: app
+  become: true
+
+  pre_tasks:
+    - name: Ensure /app is mounted (required for Docker data-root)
+      command: mountpoint -q /app
+      register: mp
+      changed_when: false
+      failed_when: mp.rc != 0
+
+  vars:
+    # geerlingguy.docker variables
+    docker_daemon_options:
+      data-root: "/app"
+    docker_add_repo: true
+    docker_users: []
+
+  roles:
+    - geerlingguy.docker
+
+  tasks:
+    - name: Show Docker root dir
+      shell: "docker info | awk -F': ' '/Docker Root Dir/ {print $2}'"
+      register: docker_root
+      changed_when: false
+    - debug:
+        msg: "Docker Root Dir => {{ docker_root.stdout }}"

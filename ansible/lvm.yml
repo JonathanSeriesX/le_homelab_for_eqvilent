@@ -1,0 +1,93 @@
+- hosts: app
+  become: true
+  vars:
+    lvm_size_gb: 5
+    loop_file: "/var/lib/app_lvm.img"
+    mount_point: "/app"
+
+  tasks:
+    - name: Ensure base packages (Ubuntu)
+      apt:
+        update_cache: true
+        name:
+          - lvm2
+          - util-linux
+          - xfsprogs
+        state: present
+
+    - name: Create sparse backing file if missing
+      command: "fallocate -l {{ lvm_size_gb }}G {{ loop_file }}"
+      args:
+        creates: "{{ loop_file }}"
+
+    - name: Check if loop device already attached
+      command: bash -lc "losetup -j {{ loop_file }} | awk '{print $1}' | tr -d ':'"
+      register: existing_loop
+      changed_when: false
+      failed_when: false
+
+    - name: Attach loop device to backing file if not present
+      command: losetup -f --show {{ loop_file }}
+      when: existing_loop.stdout | trim == ''
+      register: new_loop
+      changed_when: true
+
+    - name: Set loop device path fact
+      set_fact:
+        app_device: "{{ (existing_loop.stdout | trim) | default(new_loop.stdout, true) }}"
+
+    - name: Create volume group on the loop device
+      community.general.lvg:
+        vg: "vg_app"
+        pvs: "{{ app_device }}"
+
+    - name: Check if logical volume already exists
+      command: lvs --noheadings -o lv_name vg_app
+      register: lvs_out
+      changed_when: false
+      failed_when: false
+
+    - name: Set fact if LV exists
+      set_fact:
+        lv_exists: "{{ (lvs_out.stdout | regex_search('(^|\\n)\\s*lv_app(\\s|$)')) is not none }}"
+
+    - name: Create logical volume consuming all free space
+      community.general.lvol:
+        vg: "vg_app"
+        lv: "lv_app"
+        size: "100%FREE"
+      when: not lv_exists
+
+    - name: Ensure XFS filesystem on LV
+      filesystem:
+        fstype: "xfs"
+        dev: "/dev/vg_app/lv_app"
+
+    - name: Ensure mount point exists
+      file:
+        path: "{{ mount_point }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Mount LV and persist in fstab
+      mount:
+        path: "{{ mount_point }}"
+        src: "/dev/vg_app/lv_app"
+        fstype: "xfs"
+        state: mounted
+
+    - name: Confirm mount
+      command: df -h --output=source,size,used,avail,pcent,target {{ mount_point }}
+      register: mount_info
+      changed_when: false
+
+    - debug:
+        msg: >
+          Mounted {{ mount_point }} →
+          Device={{ mount_info.stdout_lines[1].split()[0] }},
+          Size={{ mount_info.stdout_lines[1].split()[1] }},
+          Used={{ mount_info.stdout_lines[1].split()[2] }},
+          Avail={{ mount_info.stdout_lines[1].split()[3] }},
+          Use%={{ mount_info.stdout_lines[1].split()[4] }}

@@ -4,8 +4,8 @@ variable "token" {
 }
 
 variable "region" {
-  type        = string
-  default     = "es-mad"
+  type    = string
+  default = "es-mad"
 }
 
 variable "label" {
@@ -18,18 +18,18 @@ variable "ssh_pub_key" {
 }
 
 variable "root_pass" {
-  type = string
+  type      = string
   sensitive = true
 }
 
 variable "ipa_type" {
   type    = string
-  default = "g6-standard-1" # 2GB for hopefully reasonable FreeIPA perf
+  default = "g6-dedicated-2" # I just want this stuff to run a bit faster tbh
 }
 
 variable "app_type" {
   type    = string
-  default = "g6-nanode-1" # cheapest one
+  default = "g6-standard-1" # fuck it we ball
 }
 
 variable "app_volume_size_gb" {

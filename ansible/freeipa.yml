@@ -4,16 +4,24 @@
   vars:
     ipa_ds_password: "Directory_Manager_P@ss" # change
     ipa_admin_password: "Admin_P@ss" # change
+    user1_pass: "User1Pass!" # change
+    user2_pass: "User2Pass!" # change
+    user3_pass: "User3Pass!" # change
 
   pre_tasks:
     - name: Derive FQDN from ansible_host
       set_fact:
         ipa_fqdn: "{{ ansible_host | replace('.', '-') }}.ip.linodeusercontent.com"
-        ipa_domain: "ip.linodeusercontent.com"
-        ipa_realm: "IP.LINODEUSERCONTENT.COM"
+        ipa_domain: "eqvilent.local"
+        ipa_realm: "EQVILENT.LOCAL"
 
     - debug:
         msg: "Using FQDN {{ ipa_fqdn }}"
+
+    - name: Check if IPA already installed
+      stat:
+        path: /etc/ipa/default.conf
+      register: ipa_conf
 
   tasks:
     - name: Set system hostname to rDNS FQDN
@@ -25,7 +33,6 @@
         name:
           - freeipa-server
           - freeipa-healthcheck
-          - freeipa-client
           - firewalld
         state: present
 
@@ -48,7 +55,6 @@
         - https
         - kerberos
         - ntp
-        - dns
 
     - name: Run ipa-server-install (no DNS)
       no_log: true
@@ -61,6 +67,44 @@
         --admin-password {{ ipa_admin_password }}
       args:
         creates: /etc/ipa/default.conf
+      when: not ipa_conf.stat.exists
+
+    - name: Obtain Kerberos ticket for admin
+      no_log: true
+      shell: echo "{{ ipa_admin_password }}" | kinit admin
+      changed_when: false
+
+    - name: Check presence of users
+      command: ipa user-show {{ item.name }}
+      register: ipa_user_check
+      failed_when: false
+      changed_when: false
+      loop:
+        - {
+            name: "user1",
+            pass: "{{ user1_pass }}",
+            first: "User",
+            last: "One",
+          }
+        - {
+            name: "user2",
+            pass: "{{ user2_pass }}",
+            first: "User",
+            last: "Two",
+          }
+        - {
+            name: "user3",
+            pass: "{{ user3_pass }}",
+            first: "User",
+            last: "Three",
+          }
+
+    - name: Create missing users
+      no_log: true
+      shell: |
+        echo '{{ item.item.pass }}' | ipa user-add {{ item.item.name }} --first={{ item.item.first }} --last={{ item.item.last }} --password
+      when: item.rc != 0
+      loop: "{{ ipa_user_check.results }}"
 
     - name: Show IPA config path (sanity)
       stat:
