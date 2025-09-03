@@ -1,5 +1,5 @@
 - name: Non-interactive Ubuntu release upgrade
-  hosts: ubuntu_hosts
+  hosts: app
   become: true
   vars:
     release_prompt: "normal"
