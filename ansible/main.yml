@@ -1,7 +1,7 @@
 # this is THE file to launch
 ---
-- import_playbook: freeipa.yml
+- import_playbook: ipa-server.yml
 - import_playbook: lvm.yml
 - import_playbook: docker.yml
-- import_playbook: integrate.yml
+- import_playbook: ipa-client.yml
 - import_playbook: users.yml

@@ -1,0 +1,64 @@
+- name: Non-interactive Ubuntu release upgrade
+  hosts: ubuntu_hosts
+  become: true
+  vars:
+    release_prompt: "normal"
+  tasks:
+    - name: Ensure upgrader tools present
+      apt:
+        name:
+          - ubuntu-release-upgrader-core
+          - update-manager-core
+        state: present
+        update_cache: true
+
+    - name: Set release prompt policy (LTS or normal)
+      lineinfile:
+        path: /etc/update-manager/release-upgrades
+        regexp: "^Prompt="
+        line: "Prompt={{ release_prompt }}"
+
+    - name: Make needrestart noninteractive (autorestart services)
+      copy:
+        dest: /etc/needrestart/needrestart.conf
+        mode: "0644"
+        content: |
+          $nrconf{restart} = 'a';
+
+    - name: Bring system fully up-to-date first (quiet)
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+      apt:
+        upgrade: dist
+        autoremove: yes
+        autoclean: yes
+
+    - name: Reboot after dist-upgrade
+      reboot:
+        msg: "Rebooting before release upgrade"
+        reboot_timeout: 1200
+
+    - name: Launch do-release-upgrade (non-interactive, fire-and-forget)
+      shell: >
+        nohup env DEBIAN_FRONTEND=noninteractive
+        do-release-upgrade
+        -f DistUpgradeViewNonInteractive
+        -m server
+        -q
+        > /var/log/do-release-upgrade.log 2>&1 &
+      async: 0
+      poll: 0
+
+    # The upgrade will reboot on its own; wait for SSH to return
+    - name: Wait for host to come back after release upgrade
+      wait_for_connection:
+        delay: 30
+        timeout: 3600
+
+    - name: Verify new release
+      command: lsb_release -ds
+      register: rel
+      changed_when: false
+
+    - debug:
+        msg: "Upgraded to {{ rel.stdout }} (log: /var/log/do-release-upgrade.log)"
