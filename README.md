@@ -1,2 +1,8 @@
-# le_homelab_for_eqvilent
-doing my best to automate the hell out of it
+# Eqvilent test task for Infrastructure Support Engineer
+
+At this point:
+
+- Servers are spawned correctly @ Linode by Terraform
+- FreeIPA install is automated with Ansible
+- Docker install is automated with Ansible
+- Need to finish FreeIPA client setup

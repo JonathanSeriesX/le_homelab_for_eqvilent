@@ -9,19 +9,59 @@
     ipa_admin_password: "Admin_P@ss" # same as in freeipa.yml
 
     # derive IPA server FQDN from its inventory IP (Linode rDNS form)
-    ipa_host: "{{ groups['rocky'][0] }}"
+    ipa_host: "rocky"
     ipa_fqdn: "{{ hostvars[ipa_host].ansible_host | replace('.', '-') }}.ip.linodeusercontent.com"
+    app_ip: "{{ hostvars[inventory_hostname].ansible_host }}"
+    app_fqdn: "{{ app_ip | replace('.', '-') }}.ip.linodeusercontent.com"
 
   pre_tasks:
-    - name: Ensure FreeIPA client packages
+    - name: Set app hostname to Linode rDNS FQDN
+      command: hostnamectl set-hostname {{ app_fqdn }}
+
+    - name: Ensure /etc/hosts has app FQDN mapped to its IP
+      lineinfile:
+        path: /etc/hosts
+        regexp: '^{{ app_ip | regex_escape() }}\s+'
+        line: "{{ app_ip }} {{ app_fqdn }} app"
+        state: present
+        create: yes
+        backrefs: yes
+
+    - name: Ensure /etc/hosts has IPA FQDN mapped to its IP
+      lineinfile:
+        path: /etc/hosts
+        regexp: '^{{ hostvars[ipa_host].ansible_host | regex_escape() }}\s+'
+        line: "{{ hostvars[ipa_host].ansible_host }} {{ ipa_fqdn }} rocky"
+        state: present
+        create: yes
+        backrefs: yes
+
+    - name: Ensure FreeIPA client package is present
       apt:
         update_cache: true
         name: freeipa-client
         state: present
 
+    - name: Read IPA CA from server
+      slurp:
+        src: /etc/ipa/ca.crt
+      register: ipa_ca
+      delegate_to: rocky
+
+    - name: Ensure /etc/ipa exists
+      file:
+        path: /etc/ipa
+        state: directory
+        mode: "0755"
+
+    - name: Write IPA CA certificate to app host
+      copy:
+        dest: /etc/ipa/ca.crt
+        content: "{{ ipa_ca.content | b64decode }}"
+        mode: "0644"
+
   tasks:
     - name: Enroll with ipa-client-install (idempotent via creates)
-      no_log: true
       command: >
         ipa-client-install -U
         --server={{ ipa_fqdn }}
@@ -30,6 +70,7 @@
         --principal=admin
         --password={{ ipa_admin_password }}
         --mkhomedir
+        --ca-cert-file=/etc/ipa/ca.crt
       args:
         creates: /etc/ipa/default.conf
 
@@ -39,7 +80,7 @@
   become: true
   vars:
     # app FQDN derived from app host IP (Linode rDNS form)
-    app_host: "{{ groups['app'][0] }}"
+    app_host: "app"
     app_fqdn: "{{ hostvars[app_host].ansible_host | replace('.', '-') }}.ip.linodeusercontent.com"
     ipa_admin_password: "Admin_P@ss"
 
