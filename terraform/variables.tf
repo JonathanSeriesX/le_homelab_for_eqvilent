@@ -5,12 +5,12 @@ variable "token" {
 
 variable "region" {
   type    = string
-  default = "es-mad"
+  default = "es-mad" # closest to me in Portugal
 }
 
 variable "label" {
   type    = string
-  default = "tfwnogf"
+  default = "tfwnogf" # "tf" is too short, sooooooooooo 
 }
 
 variable "ssh_pub_key" {

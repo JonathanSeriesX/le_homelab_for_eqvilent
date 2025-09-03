@@ -36,29 +36,6 @@
         state: directory
         mode: "0755"
 
-    - name: Remove stale /etc/ipa/ca.crt if present
-      file:
-        path: /etc/ipa/ca.crt
-        state: absent
-
-    - name: Download IPA CA directly from server (HTTP)
-      get_url:
-        url: "http://{{ ipa_fqdn }}/ipa/config/ca.crt"
-        dest: /etc/ipa/ca.crt
-        mode: "0644"
-        timeout: 30
-
-    - name: Validate CA with openssl
-      command: openssl x509 -in /etc/ipa/ca.crt -noout -text
-      register: ca_details
-      changed_when: false
-
-    - name: Debug CA subject and issuer
-      debug:
-        msg: |
-          Subject: {{ (ca_details.stdout | regex_search('Subject:.*')) | default('n/a') }}
-          Issuer:  {{ (ca_details.stdout | regex_search('Issuer:.*'))  | default('n/a') }}
-
   tasks:
     - name: Enroll with ipa-client-install
       command: >
