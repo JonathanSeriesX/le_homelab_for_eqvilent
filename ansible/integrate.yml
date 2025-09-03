@@ -1,65 +1,62 @@
----
-# Play 1: enroll APP into FreeIPA
 - name: Enroll app host into IPA
   hosts: app
   become: true
   vars:
-    ipa_base_domain: "evgenii.org"
-    ipa_subdomain: "lab"
-    ipa_domain: "{{ ipa_subdomain }}.{{ ipa_base_domain }}"
-    ipa_realm: "{{ (ipa_subdomain + '.' + ipa_base_domain) | upper }}"
-    ipa_host: "rocky"
-    ipa_fqdn: "ipa.{{ ipa_subdomain }}.{{ ipa_base_domain }}"
-    app_fqdn: "app.{{ ipa_subdomain }}.{{ ipa_base_domain }}"
+    ipa_domain: "lab.evgenii.org"
+    ipa_realm: "LAB.EVGENII.ORG"
+    ipa_fqdn: "ipa.lab.evgenii.org"
+    app_fqdn: "app.lab.evgenii.org"
+    ipa_admin_password: "Admin_P@ss"
 
   pre_tasks:
-    - name: Set app hostname to desired FQDN
-      command: hostnamectl set-hostname {{ app_fqdn }}
+    - name: Set app hostname
+      ansible.builtin.hostname:
+        name: "{{ app_fqdn }}"
 
-    - name: Ensure /etc/hosts has app FQDN mapped to its IP
+    - name: Ensure /etc/hosts has app FQDN
       lineinfile:
         path: /etc/hosts
-        regexp: '^{{ hostvars[inventory_hostname].ansible_host | regex_escape() }}\s+'
-        line: "{{ hostvars[inventory_hostname].ansible_host }} {{ app_fqdn }} app"
+        line: "{{ ansible_host }} {{ app_fqdn }} app"
         state: present
-        create: yes
-        backrefs: yes
 
-    - name: Ensure /etc/hosts has IPA FQDN mapped to its IP
+    - name: Ensure /etc/hosts has IPA FQDN
       lineinfile:
         path: /etc/hosts
-        regexp: '^{{ hostvars[ipa_host].ansible_host | regex_escape() }}\s+'
-        line: "{{ hostvars[ipa_host].ansible_host }} {{ ipa_fqdn }} rocky"
+        line: "{{ hostvars['rocky'].ansible_host }} {{ ipa_fqdn }} rocky"
         state: present
-        create: yes
-        backrefs: yes
 
-    - name: Ensure FreeIPA client package is present
-      apt:
-        update_cache: true
+    - name: Ensure freeipa-client package
+      package:
         name: freeipa-client
         state: present
 
-    - name: Read IPA CA from server
-      slurp:
-        src: /etc/ipa/ca.crt
-      register: ipa_ca
-      delegate_to: rocky
-
-    - name: Ensure /etc/ipa exists
-      file:
+    - name: Ensure /etc/ipa directory exists
+      ansible.builtin.file:
         path: /etc/ipa
         state: directory
-        mode: "0755"
+        mode: '0755'
 
-    - name: Write IPA CA certificate to app host
+    - name: Copy IPA CA from server
+      fetch:
+        src: /etc/ipa/ca.crt
+        dest: /tmp/ca.crt
+        flat: yes
+      delegate_to: rocky
+
+    - name: Ensure /etc/ipa/ca.crt present
       copy:
+        src: /tmp/ca.crt
         dest: /etc/ipa/ca.crt
-        content: "{{ ipa_ca.content | b64decode }}"
         mode: "0644"
 
+    - name: Verify certificate was copied
+      stat:
+        path: /etc/ipa/ca.crt
+      register: cert_stat
+      failed_when: not cert_stat.stat.exists
+
   tasks:
-    - name: Enroll with ipa-client-install (idempotent via creates)
+    - name: Enroll with ipa-client-install
       command: >
         ipa-client-install -U
         --server={{ ipa_fqdn }}
