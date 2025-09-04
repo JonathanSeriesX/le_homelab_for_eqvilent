@@ -1,3 +1,6 @@
+# This playbook performs a non-interactive Ubuntu release upgrade.
+# This is necessary because Linode does not yet provide the latest Ubuntu image,
+# and the freeipa-client has a bug that is only fixed in the latest version.
 - name: Non-interactive Ubuntu release upgrade
   hosts: app
   become: true

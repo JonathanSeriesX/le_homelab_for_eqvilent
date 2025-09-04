@@ -1,3 +1,4 @@
+# This playbook enrolls the app server into the FreeIPA domain.
 - name: Enroll app host into IPA
   hosts: app
   become: true

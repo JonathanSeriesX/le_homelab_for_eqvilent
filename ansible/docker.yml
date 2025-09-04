@@ -1,4 +1,5 @@
----
+# This playbook installs Docker using the geerlingguy.docker role.
+# It is configured to use the LVM volume created in lvm.yml for Docker's data-root.
 - hosts: app
   become: true
 

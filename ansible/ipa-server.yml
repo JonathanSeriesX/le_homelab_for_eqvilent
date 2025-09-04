@@ -9,6 +9,8 @@
     app_host: "app" # inventory hostname of the application server
 
   pre_tasks:
+    # These tasks run before the main tasks and are used to set up variables
+    # and check the state of the system before making any changes.
     - name: Compose IPA DNS settings from vars
       set_fact:
         ipa_domain: "{{ ipa_subdomain }}.{{ ipa_base_domain }}"
@@ -72,6 +74,7 @@
         - ntp
 
     - name: Run ipa-server-install with integrated DNS
+      # We use no_log to prevent sensitive information (passwords) from being displayed in the logs.
       no_log: true
       command: >
         ipa-server-install -U
@@ -87,6 +90,7 @@
       when: not ipa_conf.stat.exists
 
     - name: Obtain Kerberos ticket for admin
+      # We use no_log to prevent sensitive information (passwords) from being displayed in the logs.
       no_log: true
       shell: echo "{{ ipa_admin_password }}" | kinit admin
       changed_when: false
@@ -127,6 +131,7 @@
           }
 
     - name: Create missing users
+      # We use no_log to prevent sensitive information (passwords) from being displayed in the logs.
       no_log: true
       shell: |
         echo '{{ item.item.pass }}' | ipa user-add {{ item.item.name }} --first={{ item.item.first }} --last={{ item.item.last }} --password

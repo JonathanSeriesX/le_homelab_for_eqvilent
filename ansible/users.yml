@@ -1,4 +1,5 @@
-# --- Play A: HBAC on the IPA server -----------------------------------------
+# This playbook configures HBAC (Host-Based Access Control) rules on the IPA server
+# and file permissions on the app server.
 - name: Configure HBAC on IPA server
   hosts: rocky
   become: true
@@ -32,6 +33,7 @@
         ipa hbacrule-add-user allow-ssh-to-app --users=user3 || true
       changed_when: false
 
+---
 # --- Play B: Filesystem permissions on the app host --------------------------
 - name: Set permissions on Docker working directory
   hosts: app
